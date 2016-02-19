@@ -7,7 +7,6 @@
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
-
 import os, sys, platform
 import logging
 logger = logging.getLogger()
@@ -49,8 +48,13 @@ else:
     from eye import eye
 
 # To assign camera by name: put string(s) in list
-world_src = ["Pupil Cam1 ID2","Logitech Camera","(046d:081d)","C510","B525", "C525","C615","C920","C930e"]
-eye0_src = ["Pupil Cam1 ID0","HD-6000","Integrated Camera","HD USB Camera","USB 2.0 Camera"]
+#
+# world_src = "/dev/video1"
+# world_src = 1
+# world_src=["gst:5004"]
+# eye0_src = ["gst:5000"]
+world_src = ["/dev/video1","Pupil Cam1 ID2","Logitech Camera","(046d:081d)","C510","B525", "C525","C615","C920","C930e","Dummy video device (0x0000)", "gst:5000"]
+eye0_src = ["Pupil Cam1 ID0","HD-6000","Integrated Camera","HD USB Camera","USB 2.0 Camera", "Dummy video device (0x0001)", "gst:5004"]
 eye1_src = ["Pupil Cam1 ID1","HD-6000","Integrated Camera"]
 
 # to use a pre-recorded video.
