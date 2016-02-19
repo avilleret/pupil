@@ -37,12 +37,18 @@ logger = logging.getLogger(__name__)
 ###OS specific imports and defs
 if os_name in ("Linux","Darwin"):
     from uvc_capture import Camera_Capture,device_list,CameraCaptureError,is_accessible
+    from gst_capture import Gst_Capture
 elif os_name == "Windows":
     from win_video import Camera_Capture,device_list,CameraCaptureError
     def is_accessible(uid):
         return True
 else:
     raise NotImplementedError()
+
+if os_name == "Linux":
+   from v4l2_capture import Camera_Capture as v4l2_Camera_Capture
+   from v4l2_capture import list_devices as v4l2_device_list
+   from v4l2_capture import CameraCaptureError as v4l2_CameraCaptureError
 
 from av_file_capture import File_Capture, FileCaptureError, EndofVideoFileError,FileSeekError
 
@@ -53,8 +59,10 @@ def autoCreateCapture(src,timestamps=None,timebase = None):
      - a path to video file
      - patter of name matches
      - a device index
+     - a Gst_Capture instance
      - None
     '''
+
     # video source
     if type(src) is str and os.path.isfile(src):
         return File_Capture(src,timestamps=timestamps)
@@ -76,11 +84,34 @@ def autoCreateCapture(src,timestamps=None,timebase = None):
 
     # live src - select form pattern
     elif type(src) in (list,tuple):
+        for name_pattern in src:
+            # v4l2 device name starts with v4l2:
+            if name_pattern[:5] == 'v4l2:':
+                uid = name_pattern[5:]
+                try:
+                    cap = v4l2_Camera_Capture(uid,timebase=timebase)
+                except Exception:
+                    logger.warning("Error while opening device %s.", uid)
+                else:
+                    return cap
+            if name_pattern[:4] == 'gst:':
+                port = int(name_pattern[4:])
+                logger.warning("Try to open gstreamer on port %s",port)
+                # try:
+                #     cap = Gst_Capture(port)
+                # except Exception:
+                #     logger.warning("Error while opening gstreamer on port %s.", port)
+                # else:
+                #     return cap
+                return Gst_Capture(port)
+
         src = uid_from_name(src)
 
     # fake capture
     if src is None:
         logger.warning("Starting with Fake_Capture.")
+    else:
+        logger.warning("Starting with device %s.", src)
 
     return Camera_Capture(src,timebase=timebase)
 
@@ -91,6 +122,8 @@ def uid_from_name(pattern):
     # give precedence to camera that matches the first pattern in list.
     matching_devices = []
     attached_devices = device_list()
+    logger.warning("Device list : ")
+    logger.warning(attached_devices)
     for name_pattern in pattern:
         for device in attached_devices:
             if name_pattern in device['name']:
