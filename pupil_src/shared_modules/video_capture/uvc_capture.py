@@ -93,8 +93,13 @@ class Camera_Capture(object):
             if "ID0" in self.capture.name or "ID1" in self.capture.name:
                 self.capture.bandwidth_factor = 1.3
                 try:
-                    controls_dict['Auto Exposure Priority'].value = 1
+                    controls_dict['Auto Exposure Priority'].value = 0
                 except KeyError:
+                    pass
+                try:
+                    # print controls_dict['Auto Exposure Mode'].value
+                    controls_dict['Auto Exposure Mode'].value = 1
+                except KeyError as e:
                     pass
                 try:
                     controls_dict['Saturation'].value = 0
@@ -104,6 +109,22 @@ class Camera_Capture(object):
                     controls_dict['Absolute Exposure Time'].value = 63
                 except KeyError:
                     pass
+                try:
+                    controls_dict['Backlight Compensation'].value = 2
+                except KeyError:
+                    pass
+                try:
+                    controls_dict['Gamma'].value = 72
+                except KeyError:
+                    pass
+            else:
+                self.capture.bandwidth_factor = 1.6
+                try:
+                    controls_dict['Auto Exposure Priority'].value = 1
+                except KeyError:
+                    pass
+        if "C525" in self.capture.name or  "B525" in self.capture.name:
+            self.capture.bandwidth_factor = 4.0
             try:
                 controls_dict['Auto Focus'].value = 0
             except KeyError:
@@ -172,6 +193,9 @@ class Camera_Capture(object):
             logger.warning("%s resolution capture mode not available. Selected %s."%(new_size,size))
         self.capture.frame_size = size
 
+        if hasattr(self,'on_frame_size_change'):
+            self.on_frame_size_change(size)
+
     @property
     def name(self):
         return self.capture.name
@@ -224,7 +248,7 @@ class Camera_Capture(object):
         cameras = uvc.device_list()
         camera_names = ['Fake Capture']+[c['name'] for c in cameras]
         camera_ids = [None]+[c['uid'] for c in cameras]
-        self.menu.append(ui.Selector('uid',self,selection=camera_ids,labels=camera_names,label='Capture Device', setter=gui_init_cam_by_uid) )
+        self.menu.append(ui.Selector('uid',self,selection=camera_ids,labels=camera_names,label='Capture device', setter=gui_init_cam_by_uid) )
 
         sensor_control = ui.Growing_Menu(label='Sensor Settings')
         sensor_control.append(ui.Info_Text("Do not change these during calibration or recording!"))
@@ -233,7 +257,7 @@ class Camera_Capture(object):
         image_processing.collapsed=True
 
         sensor_control.append(ui.Selector('frame_size',self,setter=set_size, selection=self.capture.frame_sizes,label='Resolution' ) )
-        sensor_control.append(ui.Selector('frame_rate',self, selection=self.capture.frame_rates,label='Framerate' ) )
+        sensor_control.append(ui.Selector('frame_rate',self, selection=self.capture.frame_rates,label='Frame rate' ) )
 
 
         for control in self.capture.controls:

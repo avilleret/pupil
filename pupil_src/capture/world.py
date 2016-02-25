@@ -62,7 +62,7 @@ def world(pupil_queue,timebase,lauchner_pipe,eye_pipes,eyes_are_alive,user_dir,v
 
     #check versions for our own depedencies as they are fast-changing
     from pyglui import __version__ as pyglui_version
-    assert pyglui_version >= '0.6'
+    assert pyglui_version >= '0.8'
 
     #monitoring
     import psutil
@@ -72,6 +72,7 @@ def world(pupil_queue,timebase,lauchner_pipe,eye_pipes,eyes_are_alive,user_dir,v
     from methods import normalize, denormalize, delta_t
     from video_capture import autoCreateCapture, FileCaptureError, EndofVideoFileError, CameraCaptureError
     from version_utils import VersionFormat
+    import audio
 
     # Plug-ins
     from plugin import Plugin_List,import_runtime_plugins
@@ -110,8 +111,8 @@ def world(pupil_queue,timebase,lauchner_pipe,eye_pipes,eyes_are_alive,user_dir,v
     g_pool.pupil_queue = pupil_queue
     g_pool.timebase = timebase
     # g_pool.lauchner_pipe = lauchner_pipe
-    # g_pool.eye_pipes = eye_pipes
-    # g_pool.eyes_are_alive = eyes_are_alive
+    g_pool.eye_pipes = eye_pipes
+    g_pool.eyes_are_alive = eyes_are_alive
 
 
     #manage plugins
@@ -194,8 +195,11 @@ def world(pupil_queue,timebase,lauchner_pipe,eye_pipes,eyes_are_alive,user_dir,v
     g_pool.iconified = False
     g_pool.capture = cap
     g_pool.pupil_confidence_threshold = session_settings.get('pupil_confidence_threshold',.6)
+    g_pool.detection_mapping_mode = session_settings.get('detection_mapping_mode','2d')
     g_pool.active_calibration_plugin = None
 
+
+    audio.audio_mode = session_settings.get('audio_mode',audio.default_audio_mode)
 
     def open_plugin(plugin):
         if plugin ==  "Select to load":
@@ -211,6 +215,7 @@ def world(pupil_queue,timebase,lauchner_pipe,eye_pipes,eyes_are_alive,user_dir,v
             logger.error("Eye%s process already running."%eye_id)
             return
         lauchner_pipe.send(eye_id)
+        eye_pipes[eye_id].send( ('Set_Detection_Mapping_Mode',g_pool.detection_mapping_mode) )
 
         if blocking:
             #wait for ready message from eye to sequentialize startup
@@ -231,6 +236,18 @@ def world(pupil_queue,timebase,lauchner_pipe,eye_pipes,eyes_are_alive,user_dir,v
         else:
             stop_eye_process(eye_id)
 
+    def set_detection_mapping_mode(new_mode):
+        if new_mode == '2d':
+            for p in g_pool.plugins:
+                if "Vector_Gaze_Mapper" in p.class_name:
+                    logger.warning("The gaze mapper is not supported in 2d mode. Please recalibrate.")
+                    p.alive = False
+            g_pool.plugins.clean()
+        for alive, pipe in zip(g_pool.eyes_are_alive,g_pool.eye_pipes):
+            if alive.value:
+                pipe.send( ('Set_Detection_Mapping_Mode',new_mode) )
+        g_pool.detection_mapping_mode = new_mode
+
 
     #window and gl setup
     glfw.glfwInit()
@@ -240,6 +257,8 @@ def world(pupil_queue,timebase,lauchner_pipe,eye_pipes,eyes_are_alive,user_dir,v
     glfw.glfwSetWindowPos(main_window,window_pos[0],window_pos[1])
     glfw.glfwMakeContextCurrent(main_window)
     cygl.utils.init()
+    g_pool.main_window = main_window
+
 
 
     #setup GUI
@@ -249,8 +268,10 @@ def world(pupil_queue,timebase,lauchner_pipe,eye_pipes,eyes_are_alive,user_dir,v
     general_settings = ui.Growing_Menu('General')
     general_settings.append(ui.Slider('scale',g_pool.gui, setter=set_scale,step = .05,min=1.,max=2.5,label='Interface size'))
     general_settings.append(ui.Button('Reset window size',lambda: glfw.glfwSetWindowSize(main_window,frame.width,frame.height)) )
-    general_settings.append(ui.Switch('eye0_process',label='detect eye 0',setter=lambda alive: start_stop_eye(0,alive),getter=lambda: eyes_are_alive[0].value ))
-    general_settings.append(ui.Switch('eye1_process',label='detect eye 1',setter=lambda alive: start_stop_eye(1,alive),getter=lambda: eyes_are_alive[1].value ))
+    general_settings.append(ui.Selector('audio_mode',audio,selection=audio.audio_modes))
+    general_settings.append(ui.Selector('detection_mapping_mode',g_pool,label='detection & mapping mode',setter=set_detection_mapping_mode,selection=['2d','3d']))
+    general_settings.append(ui.Switch('eye0_process',label='Detect eye 0',setter=lambda alive: start_stop_eye(0,alive),getter=lambda: eyes_are_alive[0].value ))
+    general_settings.append(ui.Switch('eye1_process',label='Detect eye 1',setter=lambda alive: start_stop_eye(1,alive),getter=lambda: eyes_are_alive[1].value ))
     general_settings.append(ui.Selector('Open plugin', selection = user_launchable_plugins,
                                         labels = [p.__name__.replace('_',' ') for p in user_launchable_plugins],
                                         setter= open_plugin, getter=lambda: "Select to load"))
@@ -288,7 +309,6 @@ def world(pupil_queue,timebase,lauchner_pipe,eye_pipes,eyes_are_alive,user_dir,v
     basic_gl_setup()
     g_pool.image_tex = Named_Texture()
     g_pool.image_tex.update_from_frame(frame)
-
     # refresh speed settings
     glfw.glfwSwapInterval(0)
 
@@ -420,6 +440,8 @@ def world(pupil_queue,timebase,lauchner_pipe,eye_pipes,eyes_are_alive,user_dir,v
     session_settings['version'] = g_pool.version
     session_settings['eye0_process_alive'] = eyes_are_alive[0].value
     session_settings['eye1_process_alive'] = eyes_are_alive[1].value
+    session_settings['detection_mapping_mode'] = g_pool.detection_mapping_mode
+    session_settings['audio_mode'] = audio.audio_mode
     session_settings.close()
 
     # de-init all running plugins
